@@ -1,6 +1,6 @@
 {
     "name"         : "yatradeoff",
-    "version"      : "0.0.1",
+    "version"      : "0.0.2",
     "scripts": {
         "start": "node app.js"
     },
@@ -8,12 +8,11 @@
         "basic-auth-connect": "1.0.x",
         "sqlite3": "3.1.8",
         "express": "4.1.x",
-        "body-parser": "1.17.x",
-        "cfenv":"~1.0.0"
+        "body-parser": "1.17.x"
     },
     "repository": {},
     "engines": {
-        "node": "4.x"
+        "node": "14.x"
     }
 }
 

@@ -44,7 +44,7 @@ This new API handles compatible input data from original one, and returns subset
 
 - Run app.js with Node.js( $ node app ).
 
-- You can access /dilemmas .
+- You can access `POST /dilemmas` with following post data:
 
 ## Licensing
 
@@ -53,5 +53,5 @@ This code is licensed under MIT.
 
 ## Copyright
 
-2017 K.Kimura @ Juge.Me all rights reserved.
+2017-2022 K.Kimura @ Juge.Me all rights reserved.
 
