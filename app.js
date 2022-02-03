@@ -10,6 +10,7 @@ var settings = require( './settings' );
 var settings_basic_username = 'BASIC_USERNAME' in process.env ? process.env.BASIC_USERNAME : ( settings.basic_username ? settings.basic_username : "" ); 
 var settings_basic_password = 'BASIC_PASSWORD' in process.env ? process.env.BASIC_PASSWORD : ( settings.basic_password ? settings.basic_password : "" ); 
 var settings_result_limit = 'BASIC_RESULT_LIMIT' in process.env ? parseInt( process.env.RESULT_LIMIT ) : ( settings.basic_result_limit ? parseInt( settings.result_limit ) : 0 ); 
+var settings_cors = 'CORS' in process.env ? process.env.CORS : '';
 
 app.use( bodyParser.urlencoded( { extended: false, limit: '10mb' } ) );
 app.use( bodyParser.json({limit: '10mb'}) );
@@ -22,7 +23,16 @@ if( settings_basic_username && settings_basic_password ){
   }));
 }
 
-app.post( '/analytics', function( req, res ){
+if( settings_cors ){
+  app.all( '/analytics*', function( req, res, next ){
+      res.setHeader( 'Access-Control-Allow-Origin', settings_cors );
+      res.setHeader( 'Vary', 'Origin' );
+    next();
+  });
+}
+
+
+app.post( '/analytics', async function( req, res ){
   res.contentType( 'application/json; charset=utf-8' );
 
   var body = req.body;
@@ -107,7 +117,7 @@ app.post( '/analytics', function( req, res ){
       var id = req.query.id;
       var table = null;
       if( id ){
-        table = getTable( id );
+        table = await getTable( id );
       }
       if( !table ){
         //. (1)
@@ -181,7 +191,7 @@ app.post( '/analytics', function( req, res ){
           stdevs: stdevs
         };
   
-        setTable( table, id );
+        await setTable( table, id );
       }
   
       //. (5) ユーザー毎の ( goals 値×標準偏差値 ) の和を求める（goals 値が負の場合は小さい標準偏差が小さいほど優遇される）
@@ -219,19 +229,70 @@ app.post( '/analytics', function( req, res ){
 });
 
 
-var tables = {};
-function getTable( id ){
-  if( id in tables ){
-    return tables[id];
-  }else{
-    return null;
-  }
+//. #2
+var client = null;
+var db_service_name = 'CLOUDANT';
+var settings_db_url = 'DB_URL' in process.env ? process.env.DB_URL : settings.db_url;
+var settings_db_apikey = 'DB_APIKEY' in process.env ? process.env.DB_APIKEY : settings.db_apikey;
+var settings_db_name = 'DB_NAME' in process.env ? process.env.DB_NAME : settings.db_name;
+process.env[db_service_name + '_AUTH_TYPE'] = 'IAM';
+if( settings_db_url ){
+  process.env[db_service_name + '_URL'] = settings_db_url;
+}
+if( settings_db_apikey ){
+  process.env[db_service_name + '_APIKEY'] = settings_db_apikey;
 }
 
-function setTable( table, id ){
-  tables[id] = table;
+//. DB
+var { CloudantV1 } = require( '@ibm-cloud/cloudant' );
 
-  return true;
+//. 環境変数 CLOUDANT_AUTH_TYPE を見て接続する
+var client = null;
+if( settings_db_apikey && settings_db_url && settings_db_name ){
+  client = CloudantV1.newInstance( { serviceName: db_service_name, disableSslVerification: true } );
+  client.putDatabase({
+    db: settings_db_name
+  }).catch( function( err ){
+    //console.log( err );
+  });
+}
+
+
+var tables = {};
+async function getTable( id ){
+  return new Promise( ( resolve, reject ) => {
+    if( client ){
+      client.getDocument( { db: settings_db_name, docId: id, includeDocs: true } ).then( function( result ){
+        resolve( result.result );
+      }).catch( function( err ){
+        console.log( err );
+        resolve( null );
+      });
+    }else{
+      if( id in tables ){
+        resolve( tables[id] );
+      }else{
+        resolve( null );
+      }
+    }
+  });
+}
+
+async function setTable( table, id ){
+  return new Promise( ( resolve, reject ) => {
+    if( client ){
+      table._id = id;
+      client.postDocument( { db: settings_db_name, document: table } ).then( function( result ){
+        resolve( result.result );
+      }).catch( function( err ){
+        console.log( err );
+        resolve( null );
+      });
+    }else{
+      tables[id] = table;
+      resolve( true );
+    }
+  });
 }
 
 function getAvgVaStd( arr ){
