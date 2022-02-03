@@ -1,8 +1,8 @@
 //. app.js
 var express = require( 'express' ),
-    sqlite3 = require( "sqlite3" ).verbose(),
     basicAuth = require( 'basic-auth-connect' ),
     bodyParser = require( 'body-parser' ),
+    uuidv1 = require( 'uuid/v1' ),
     app = express();
 var settings = require( './settings' );
 
@@ -14,7 +14,7 @@ var settings_result_limit = 'BASIC_RESULT_LIMIT' in process.env ? parseInt( proc
 app.use( bodyParser.urlencoded( { extended: false, limit: '10mb' } ) );
 app.use( bodyParser.json({limit: '10mb'}) );
 app.use( express.Router() );
-//app.use( express.static( __dirname + '/public' ) );
+app.use( express.static( __dirname + '/public' ) );
 
 if( settings_basic_username && settings_basic_password ){
   app.all( '/dilemmas*', basicAuth( function( user, pass ){
@@ -29,18 +29,36 @@ app.get( '/', function( req, res ){
   res.end();
 });
 
-app.post( '/dilemmas', function( req, res ){
+app.post( '/analytics', function( req, res ){
   res.contentType( 'application/json; charset=utf-8' );
-  
-  var p = '{}';
-  //console.log( req.body );
+
   var body = req.body;
+  var limit = 0;
+  var offset = 0;
+
+  if( req.query.limit ){
+    var _limit = req.query.limit;
+    try{
+      _limit = parseInt( _limit );
+      limit = _limit;
+    }catch( e ){
+    }
+  }
+  if( req.query.offset ){
+    var _offset = req.query.offset;
+    try{
+      _offset = parseInt( _offset );
+      offset = _offset;
+    }catch( e ){
+    }
+  }
+
   /* body = {
     subject: "subject",
     columns: [ 
-      { key: 'key0', goal: 'min' },
-      { key: 'key1', goal: 'max' },
-      { key: 'key2', goal: 'max' },
+      { key: 'key0', goal: "max" },
+      { key: 'key1', goal: "min" },
+      { key: 'key2', goal: "min" },
           :
     ],
     options: [ 
@@ -57,139 +75,202 @@ app.post( '/dilemmas', function( req, res ){
   
   body = {
     goals: [ 
-      { key: 'key0', goal: 'min' },
-      { key: 'key1', goal: 'max' },
-      { key: 'key2', goal: 'max' },
-      { key: 'key3', goal: 'min' },
+      { key: 'key0', goal: 1 },
+      { key: 'key1', goal: -1 },
+      { key: 'key2', goal: 1 },
+      { key: 'key3', goal: 2 },
           :
     ],
     values: [ 
-      { key0: 0, key1: 1, key2: 2, key3: 3, ... },
-      { key0: 10, key1: 11, key2: 12, key3: 13, ... },
-      { key0: 20, key1: 21, key2: 22, key3: 23, ... },
+      { id: 'AAA', key0: 0, key1: 1, key2: 2, key3: 3, ... },
+      { id: 'BBB', key0: 10, key1: 11, key2: 12, key3: 13, ... },
+      { id: 'CCC', key0: 20, key1: 21, key2: 22, key3: 23, ... },
           :
     ]
   }
 
   // 入力をよりシンプルに変更
   */
-  var prioritised = ( req.query.prioritised !== undefined ? req.query.prioritised : false );
-  var goals = body.goals;
-  var values = body.values;
 
-  if( !values || !values.length ){
-    var keys = Object.keys( values[0] );
+  /*
+  アルゴリズム：
+  (1) ポストデータの values を表形式に正規化（含まれていないデータは 0 とみなす）
+  (2) (1) の各列ごとに平均、分散、標準偏差を求める
+  (3) (2) の結果から、ユーザーごと（IDごと）に各列の標準偏差値を求める
+  (4) (3) までできたら、この結果に ID を付与して一旦保存する
 
-    var db = null;
-    try{
-      //. スキーマ作成
-      db = new sqlite3.Database( ":memory:" );
-      db.serialize( function(){
-        //. 初期準備
-        var sql0 = "CREATE TABLE ids( id text";
-        var avgs = new Array( keys.length );
-        for( var i = 0; i < keys.length; i ++ ){
-          sql0 += ( ", " + keys[i] + " real" ); 
-          avgs[i] = 0.0;
-        }
-        sql0 += ", ids_avg real )";
-
-        //. テーブル作成
-        db.run( sql0 );
-        //console.log( sql0 );
-
-        //. 列ごとの平均値計算
-        for( var j = 0; j < values.length; j ++ ){
-          for( var i = 0; i < keys.length; i ++ ){
-            avgs[i] += values[j][keys[i]];
-          }
-        }
-
-        //. データ入力
-        var avg_avgs = new Array(values.length);
-        var sql1 = "INSERT INTO ids";
-        for( var j = 0; j < values.length; j ++ ){
-          avg_avgs[j] = 0.0;
-          if( j % 500 > 0 ){  //if( j > 0 ){
-            sql1 += " UNION ALL";
-          }
-          sql1 += " SELECT '" + values[j].key + "'";
-          var values = values[j].values;
-          for( var i = 0; i < keys.length; i ++ ){
-            var av = ( values[j][keys[i]] - avgs[i] );
-            if( goals[i].goal.toUpperCase() == 'MIN' ){  // ???
-              av *= -1;
-            }
-            sql1 += ( ", " + av );
-    
-            if( prioritised ){
-              avg_avgs[j] += ( av * ( keys.length - i ) ); //. 重み付けあり
-            }else{
-              avg_avgs[j] += ( av ); //. 重み付けなし
-            }
-          }
-          sql1 += ( ", " + ( avg_avgs[j] / keys.length ) );
-  
-          //. バルクインサートを 500 件ごとに区切る(http://stackoverflow.com/questions/25257754/sqlitetoo-many-terms-in-compound-select)
-          if( j % 500 == 499 ){
-            db.run( sql1 );
-            sql1 = "INSERT INTO ids";
-          }
-        }
-  
-        if( values.length % 500 > 0 ){
-          db.run( sql1 );
-          //console.log( sql1 );
-        }
-  
-        //. 取得
-        var limit = Math.round( values.length / 20 );  //. デフォルトでは上位 5% を表示
-        if( settings_result_limit ){
-          if( limit > settings_result_limit ){ limit = settings_result_limit; }
-        }
-        var sql2 = "SELECT rowid, id, ids_avg FROM ids ORDER BY ids_avg DESC LIMIT " + limit;
-        //console.log( sql2 );
-        var solutions = [];
-        db.each( sql2, function( err, row ){
-          //console.log( row.rowid + ":" + row.id + " - " + row.ids_avg );
-          var solution = {
-            "solution_ref": row.id,
-            "status": "FRONT"
-          };
-          solutions.push( solution );
-          if( solutions.length == limit ){
-            var resolution = {
-              "solutions": solutions
-            };
-            body.resolution = resolution;
-            body.preferable_esolutions = [];
-  
-            res.write( JSON.stringify( { status: true, result: body }, null, 2 ) );
-            res.end();
-          }else{
-            res.status( 400 );
-            res.write( JSON.stringify( { status: false, error: '#solutions not matched.' }, null, 2 ) );
-            res.end();
+  (5) (4) の結果からユーザー毎の ( goals 値×標準偏差値 ) の和を求める（goals 値が負の場合は小さい標準偏差が小さいほど優遇される）
+  (6) (5) の結果からユーザーをソートして、（上位数名を選んで）結果とする
+  */
+  try{ 
+    var id = req.query.id;
+    var table = null;
+    if( id ){
+      table = getTable( id );
+    }
+    if( !table ){
+      //. (1)
+      //. ポストデータから全列名を取り出す
+      var keynames = [];
+      var ids = [];
+      body.values.forEach( function( value_record ){
+        ids.push( value_record.id );
+        Object.keys( value_record ).forEach( function( keyname ){
+          if( keynames.indexOf( keyname ) == -1 ){
+            keynames.push( keyname );
           }
         });
       });
-    }catch( e ){
-      res.status( 400 );
-      res.write( JSON.stringify( { status: false, error: e }, null, 2 ) );
-      res.end();
-    }finally{
-      if( db ){
-        db.close();
-      }
+  
+      //. ポストデータの values を正規化された表にする
+      var normal_values = {};
+      body.values.forEach( function( value_record ){
+        var record = {};
+        keynames.forEach( function( keyname ){
+          if( keyname in value_record ){
+            record[keyname] = value_record[keyname];
+          }else{
+            record[keyname] = 0.0;
+          }
+        });
+        normal_values[value_record.id] = record;
+      });
+
+      //. (2) 各列ごとに平均、分散、標準偏差を求める
+      var avgs = {};
+      var vas = {};
+      var stds = {};
+      keynames.forEach( function( keyname ){
+        if( keyname != 'id' ){
+          var arr = [];
+          ids.forEach( function( id ){
+            arr.push( normal_values[id][keyname] );
+          });
+
+          var r = getAvgVaStd( arr );
+          avgs[keyname] = r.avg;
+          vas[keyname] = r.va;
+          stds[keyname] = r.std;
+        }
+      });
+
+      //. (3) ユーザー毎に各列の標準偏差値( ( x - avg ) / std )を求める
+      var stdevs = {};
+      ids.forEach( function( id ){
+        var record = {};
+        var values = normal_values[id];
+        keynames.forEach( function( keyname ){
+          if( keyname != 'id' ){
+            var stdev = ( values[keyname] - avgs[keyname] ) / stds[keyname];
+            record[keyname] = stdev;
+          }
+        });
+
+        stdevs[id] = record;
+      });
+
+      //. (4) この結果に ID を付与して一旦保存する
+      id = uuidv1();
+      table = {
+        id: id,
+        normal_values: normal_values,
+        avgs: avgs,
+        vas: vas,
+        stds: stds,
+        stdevs: stdevs
+      };
+
+      setTable( table, id );
     }
-  }else{
+
+    //. (5) ユーザー毎の ( goals 値×標準偏差値 ) の和を求める（goals 値が負の場合は小さい標準偏差が小さいほど優遇される）
+    var goals = body.goals;
+    var values_by_user = [];
+    ids.forEach( function( id ){
+      var user_stdevs = table['stdevs'][id];
+      var point = 0.0;
+  
+      goals.forEach( function( goal ){
+        point += ( user_stdevs[goal.key] * goal.goal );
+      });
+      values_by_user.push( { id: id, point: point } );
+    });
+
+    //. (6) ユーザーをソートして、（上位数名を選んで）結果とする
+    values_by_user.sort( sortByPointDesc );
+
+    if( offset ){
+      values_by_user.splice( 0, offset );
+    }
+    if( limit ){
+      values_by_user.splice( limit )
+    }
+
+    res.write( JSON.stringify( { status: true, id: id, results: values_by_user }, null, 2 ) );
+    res.end();
+  }catch( e ){
+    console.log( e );
     res.status( 400 );
-    res.write( JSON.stringify( { status: false, error: 'invalid post data.' }, null, 2 ) );
+    res.write( JSON.stringify( { status: false, error: e }, null, 2 ) );
     res.end();
   }
-
 });
 
+
+var tables = {};
+function getTable( id ){
+  if( id in tables ){
+    return tables[id];
+  }else{
+    return null;
+  }
+}
+
+function setTable( table, id ){
+  tables[id] = table;
+
+  return true;
+}
+
+function getAvgVaStd( arr ){
+  var avg = 0.0;
+  var va = 0.0;
+  var std = 0.0;
+
+  //. https://qiita.com/FumioNonaka/items/fee07b53fd277b218c97
+  //. 平均
+  arr.forEach( function( x ){
+    avg += x;
+  });
+  avg /= arr.length;
+
+  //. 平均との差の２乗
+  var sqdif = [];
+  arr.forEach( function( x ){
+    sqdif.push( ( x - avg ) ** 2 );
+  });
+
+  //. 分散
+  sqdif.forEach( function( x ){
+    va += x;
+  });
+  va /= sqdif.length;
+
+  //. 標準偏差
+  std = Math.sqrt( va );
+  
+
+  return { avg: avg, va: va, std: std };
+}
+
+function sortByPointDesc( a, b ){
+  var r = 0;
+
+  if( a['point'] < b['point'] ){ r = 1; }
+  else if( a['point'] > b['point'] ){ r = -1; }
+
+  return r;
+}
 
 var port = process.env.PORT || 8080;
 app.listen( port );

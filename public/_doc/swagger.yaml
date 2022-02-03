@@ -1,0 +1,42 @@
+swagger: '2.0'
+info:
+  description: Yet Anohter Tradeof API ドキュメント
+  version: 0.0.1
+  title: Yet Anohter Tradeof REST APIs
+host: localhost:8080
+basePath: /
+tags:
+  - name: analytics
+    description: Tradeoff Analytics APIs
+schemes:
+  - http
+  - https
+paths:
+  /analytics:
+    post:
+      tags:
+        - analytics
+      summary: Tradeoff Analytics
+      description: Tradeoff Analytics
+      produces:
+        - application/json
+      parameters:
+        - name: body
+          in: body
+          schema:
+            $ref: '#/definitions/AnalyticsRequest'
+      responses:
+        '200':
+          description: 成功
+        '400':
+          description: エラー
+definitions:
+  AnalyticsRequest:
+    type: object
+    properties:
+      goals:
+        type: array
+        description: Goals for each rows
+      values:
+        type: array
+        description: Original status
