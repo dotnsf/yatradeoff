@@ -17,17 +17,10 @@ app.use( express.Router() );
 app.use( express.static( __dirname + '/public' ) );
 
 if( settings_basic_username && settings_basic_password ){
-  app.all( '/dilemmas*', basicAuth( function( user, pass ){
+  app.all( '/analytics*', basicAuth( function( user, pass ){
     return( user === settings.basic_username && pass === settings.basic_password );
   }));
 }
-
-app.get( '/', function( req, res ){
-  res.contentType( 'application/json; charset=utf-8' );
-  
-  res.write( JSON.stringify( { status: true }, null, 2 ) );
-  res.end();
-});
 
 app.post( '/analytics', function( req, res ){
   res.contentType( 'application/json; charset=utf-8' );
@@ -103,111 +96,120 @@ app.post( '/analytics', function( req, res ){
   (6) (5) の結果からユーザーをソートして、（上位数名を選んで）結果とする
   */
   try{ 
-    var id = req.query.id;
-    var table = null;
-    if( id ){
-      table = getTable( id );
-    }
-    if( !table ){
-      //. (1)
-      //. ポストデータから全列名を取り出す
-      var keynames = [];
-      var ids = [];
-      body.values.forEach( function( value_record ){
-        ids.push( value_record.id );
-        Object.keys( value_record ).forEach( function( keyname ){
-          if( keynames.indexOf( keyname ) == -1 ){
-            keynames.push( keyname );
-          }
-        });
-      });
-  
-      //. ポストデータの values を正規化された表にする
-      var normal_values = {};
-      body.values.forEach( function( value_record ){
-        var record = {};
-        keynames.forEach( function( keyname ){
-          if( keyname in value_record ){
-            record[keyname] = value_record[keyname];
-          }else{
-            record[keyname] = 0.0;
-          }
-        });
-        normal_values[value_record.id] = record;
-      });
-
-      //. (2) 各列ごとに平均、分散、標準偏差を求める
-      var avgs = {};
-      var vas = {};
-      var stds = {};
-      keynames.forEach( function( keyname ){
-        if( keyname != 'id' ){
-          var arr = [];
-          ids.forEach( function( id ){
-            arr.push( normal_values[id][keyname] );
+    //. #3
+    if( !body || typeof body != 'object '
+      || !body.goals || typeof body.goals != 'array' 
+      || !body.values || typeof body.values != 'array' ){
+      res.status( 400 );
+      res.write( JSON.stringify( { status: false, error: 'wrong format for post data.' }, null, 2 ) );
+      res.end();
+    }else{
+      var id = req.query.id;
+      var table = null;
+      if( id ){
+        table = getTable( id );
+      }
+      if( !table ){
+        //. (1)
+        //. ポストデータから全列名を取り出す
+        var keynames = [];
+        var ids = [];
+        body.values.forEach( function( value_record ){
+          ids.push( value_record.id );
+          Object.keys( value_record ).forEach( function( keyname ){
+            if( keynames.indexOf( keyname ) == -1 ){
+              keynames.push( keyname );
+            }
           });
-
-          var r = getAvgVaStd( arr );
-          avgs[keyname] = r.avg;
-          vas[keyname] = r.va;
-          stds[keyname] = r.std;
-        }
-      });
-
-      //. (3) ユーザー毎に各列の標準偏差値( ( x - avg ) / std )を求める
-      var stdevs = {};
-      ids.forEach( function( id ){
-        var record = {};
-        var values = normal_values[id];
+        });
+  
+        //. ポストデータの values を正規化された表にする
+        var normal_values = {};
+        body.values.forEach( function( value_record ){
+          var record = {};
+          keynames.forEach( function( keyname ){
+            if( keyname in value_record ){
+              record[keyname] = value_record[keyname];
+            }else{
+              record[keyname] = 0.0;
+            }
+          });
+          normal_values[value_record.id] = record;
+        });
+  
+        //. (2) 各列ごとに平均、分散、標準偏差を求める
+        var avgs = {};
+        var vas = {};
+        var stds = {};
         keynames.forEach( function( keyname ){
           if( keyname != 'id' ){
-            var stdev = ( values[keyname] - avgs[keyname] ) / stds[keyname];
-            record[keyname] = stdev;
+            var arr = [];
+            ids.forEach( function( id ){
+              arr.push( normal_values[id][keyname] );
+            });
+
+            var r = getAvgVaStd( arr );
+            avgs[keyname] = r.avg;
+            vas[keyname] = r.va;
+            stds[keyname] = r.std;
           }
         });
-
-        stdevs[id] = record;
-      });
-
-      //. (4) この結果に ID を付与して一旦保存する
-      id = uuidv1();
-      table = {
-        id: id,
-        normal_values: normal_values,
-        avgs: avgs,
-        vas: vas,
-        stds: stds,
-        stdevs: stdevs
-      };
-
-      setTable( table, id );
-    }
-
-    //. (5) ユーザー毎の ( goals 値×標準偏差値 ) の和を求める（goals 値が負の場合は小さい標準偏差が小さいほど優遇される）
-    var goals = body.goals;
-    var values_by_user = [];
-    ids.forEach( function( id ){
-      var user_stdevs = table['stdevs'][id];
-      var point = 0.0;
   
-      goals.forEach( function( goal ){
-        point += ( user_stdevs[goal.key] * goal.goal );
+        //. (3) ユーザー毎に各列の標準偏差値( ( x - avg ) / std )を求める
+        var stdevs = {};
+        ids.forEach( function( id ){
+          var record = {};
+          var values = normal_values[id];
+          keynames.forEach( function( keyname ){
+            if( keyname != 'id' ){
+              var stdev = ( values[keyname] - avgs[keyname] ) / stds[keyname];
+              record[keyname] = stdev;
+            }
+          });
+
+          stdevs[id] = record;
+        });
+
+        //. (4) この結果に ID を付与して一旦保存する
+        id = uuidv1();
+        table = {
+          id: id,
+          normal_values: normal_values,
+          avgs: avgs,
+          vas: vas,
+          stds: stds,
+          stdevs: stdevs
+        };
+  
+        setTable( table, id );
+      }
+  
+      //. (5) ユーザー毎の ( goals 値×標準偏差値 ) の和を求める（goals 値が負の場合は小さい標準偏差が小さいほど優遇される）
+      var goals = body.goals;
+      var values_by_user = [];
+      ids.forEach( function( id ){
+        var user_stdevs = table['stdevs'][id];
+        var point = 0.0;
+  
+        goals.forEach( function( goal ){
+          point += ( user_stdevs[goal.key] * goal.goal );
+        });
+        values_by_user.push( { id: id, point: point } );
       });
-      values_by_user.push( { id: id, point: point } );
-    });
 
-    //. (6) ユーザーをソートして、（上位数名を選んで）結果とする
-    values_by_user.sort( sortByPointDesc );
+      //. (6) ユーザーをソートして、（上位数名を選んで）結果とする
+      values_by_user.sort( sortByPointDesc );
 
-    if( offset ){
-      values_by_user.splice( 0, offset );
+      if( offset ){
+        values_by_user.splice( 0, offset );
+      }
+      if( limit ){
+        values_by_user.splice( limit )
+      }
+
+      res.write( JSON.stringify( { status: true, id: id, results: values_by_user }, null, 2 ) );
+      res.end();
     }
-    if( limit ){
-      values_by_user.splice( limit )
-    }
-
-    res.write( JSON.stringify( { status: true, id: id, results: values_by_user }, null, 2 ) );
-    res.end();
   }catch( e ){
     console.log( e );
     res.status( 400 );
