@@ -9,7 +9,7 @@ var settings = require( './settings' );
 //. Env values
 var settings_basic_username = 'BASIC_USERNAME' in process.env ? process.env.BASIC_USERNAME : ( settings.basic_username ? settings.basic_username : "" ); 
 var settings_basic_password = 'BASIC_PASSWORD' in process.env ? process.env.BASIC_PASSWORD : ( settings.basic_password ? settings.basic_password : "" ); 
-var settings_result_limit = 'BASIC_RESULT_LIMIT' in process.env ? parseInt( process.env.RESULT_LIMIT ) : ( settings.basic_result_limit ? parseInt( settings.result_limit ) : 0 ); 
+var settings_result_limit = 'RESULT_LIMIT' in process.env ? parseInt( process.env.RESULT_LIMIT ) : ( settings.basic_result_limit ? parseInt( settings.result_limit ) : 0 ); 
 var settings_cors = 'CORS' in process.env ? process.env.CORS : '';
 
 app.use( bodyParser.urlencoded( { extended: false, limit: '10mb' } ) );
@@ -36,7 +36,7 @@ app.post( '/analytics', async function( req, res ){
   res.contentType( 'application/json; charset=utf-8' );
 
   var body = req.body;
-  var limit = 0;
+  var limit = settings_result_limit;
   var offset = 0;
 
   if( req.query.limit ){
