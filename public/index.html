@@ -140,9 +140,15 @@ function postdata(){
         $('table tr th').css( 'background-color', '#ccc' );        
         goals.forEach( function( r ){
           if( r.goal > 0 ){
-            $('#'+r.key+'_th').css( 'background-color', '#cfc' );
+            var n = 13 - r.goal;
+            var c = '0123456789abcdef'.charAt( n );
+            $('#'+r.key+'_th').html( r.key + ' (+' + r.goal + ')' );
+            $('#'+r.key+'_th').css( 'background-color', '#' + c + 'f' + c );
           }else{
-            $('#'+r.key+'_th').css( 'background-color', '#fcc' );
+            var n = 13 + r.goal;
+            var c = '0123456789abcdef'.charAt( n );
+            $('#'+r.key+'_th').html( r.key + ' (' + r.goal + ')' );
+            $('#'+r.key+'_th').css( 'background-color', '#f' + c + c );
           }
         });
       }
