@@ -26,8 +26,132 @@ pre{
 }
 </style>
 <script>
+var table_id = null;
+
 $(function(){
+  $('input[type=range]').change( function(){
+    var name = $(this).attr( 'id' );
+    var value = $('#'+name).val();
+    $('#'+name+'_value').html( value );
+
+    var data = JSON.parse( $('#data').val() );
+    var height_value = parseInt( $('#height').val() );
+    var weight_value = parseInt( $('#weight').val() );
+    var eye_value = parseInt( $('#eye').val() );
+    var blood_value = parseInt( $('#blood').val() );
+    data.goals = [];
+    if( height_value ){
+      data.goals.push( { key: "身長", goal: height_value } );
+      if( height_value > 0 ){
+        $('.height_row').css( 'background-color', '#cfc' );
+      }else{
+        $('.height_row').css( 'background-color', '#fcc' );
+      }
+    }else{
+      $('.height_row').css( 'background-color', '#ccc' );
+    }
+    if( weight_value ){
+      data.goals.push( { key: "体重", goal: weight_value } );
+      if( weight_value > 0 ){
+        $('.weight_row').css( 'background-color', '#cfc' );
+      }else{
+        $('.weight_row').css( 'background-color', '#fcc' );
+      }
+    }else{
+      $('.weight_row').css( 'background-color', '#ccc' );
+    }
+    if( eye_value ){
+      data.goals.push( { key: "視力", goal: eye_value } );
+      if( eye_value > 0 ){
+        $('.eye_row').css( 'background-color', '#cfc' );
+      }else{
+        $('.eye_row').css( 'background-color', '#fcc' );
+      }
+    }else{
+      $('.eye_row').css( 'background-color', '#ccc' );
+    }
+    if( blood_value ){
+      data.goals.push( { key: "血圧", goal: blood_value } );
+      if( blood_value > 0 ){
+        $('.blood_row').css( 'background-color', '#cfc' );
+      }else{
+        $('.blood_row').css( 'background-color', '#fcc' );
+      }
+    }else{
+      $('.blood_row').css( 'background-color', '#ccc' );
+    }
+
+    $('#data').html( JSON.stringify( data, null, 2 ) );
+  });
 });
+
+function postdata(){
+  $('#result').html( '' );
+  var data = $('#data').val();
+  $.ajax({
+    type: 'POST',
+    url: '/analytics',
+    data: data,
+    contentType: 'application/json',
+    success: function( result ){
+      //console.log( result );
+      if( result && result.id ){
+        table_id = result.id;
+      }
+      if( result && result.results ){
+        data = JSON.parse( data );
+        var goals = data.goals;
+        var values = data.values;
+
+        var table = '<table class="table table-bordered">'
+          + '<tr><th>#</th><th>id</th><th id="身長_th">身長</th><th id="体重_th">体重</th><th id="視力_th">視力</th><th id="血圧_th">血圧</th><th>point</th></tr>';
+        for( var i = 0; i < result.results.length; i ++ ){
+          var r = result.results[i];
+          var id = r.id; 
+          var point = r.point; 
+
+          var height = null;
+          var weight = null;
+          var eye = null;
+          var blood = null;
+          for( var j = 0; j < values.length; j ++ ){
+            if( values[j].id == id ){
+              height = values[j]['身長'];
+              weight = values[j]['体重'];
+              eye = values[j]['視力'];
+              blood = values[j]['血圧'];
+            }
+          }
+
+          var tr = '<tr>'
+            + '<td>' + ( i + 1 ) + '</td>'
+            + '<td>' + id + '</td>'
+            + '<td>' + height + '</td>'
+            + '<td>' + weight + '</td>'
+            + '<td>' + eye + '</td>'
+            + '<td>' + blood + '</td>'
+            + '<td>' + point + '</td>'
+            + '</tr>';
+          table += tr;
+        }
+        table += '</table>';
+        $('#result').html( table );
+
+        $('table tr th').css( 'background-color', '#ccc' );        
+        goals.forEach( function( r ){
+          if( r.goal > 0 ){
+            $('#'+r.key+'_th').css( 'background-color', '#cfc' );
+          }else{
+            $('#'+r.key+'_th').css( 'background-color', '#fcc' );
+          }
+        });
+      }
+    },
+    error: function( e0, e1, e2 ){
+      console.log( e0, e1, e2 );
+    } 
+  })
+}
 </script>
 </head>
 <body>
@@ -39,7 +163,38 @@ $(function(){
 <div class="container" style="position: relative; top: 20px;">
   <p><a href="/_doc">Try</a> <code>POST /analytics</code> with following post data:</p>
   <div class="jumbotron mt-4">
-      <pre>
+    <table style="width:100%">
+      <tr>
+        <td>身長</td>
+        <td>
+          <input type="range" class="form-control" id="height" min="-5" max="5" value="2"/>
+        </td>
+        <td id="height_value">2</td>
+      </tr>
+      <tr>
+        <td>体重</td>
+        <td>
+          <input type="range" class="form-control" id="weight" min="-5" max="5" value="-2"/>
+        </td>
+        <td id="weight_value">-2</td>
+      </tr>
+      <tr>
+        <td>視力</td>
+        <td>
+          <input type="range" class="form-control" id="eye" min="-5" max="5" value="0"/>
+        </td>
+        <td id="eye_value">0</td>
+      </tr>
+      <tr>
+        <td>血圧</td>
+        <td>
+          <input type="range" class="form-control" id="blood" min="-3" max="3" value="-1"/>
+        </td>
+        <td id="blood_value">-1</td>
+      </tr>
+    </table>
+    <hr />
+    <textarea id="data" style="width:100%; height:200px;">
 {
     "goals": [
         { "key": "身長", "goal": 2 },
@@ -54,7 +209,12 @@ $(function(){
         { "id": "005", "身長": 170.2, "体重": 71.3, "視力": 0.3, "血圧": 139.1 }
     ]
 }
-      </pre>
+    </textarea>
+    <button class="btn btn-primary" onClick="postdata();">POST /analitics</button>
+    <hr />
+    <div id="result">
+
+    </div>
   </div>
 </div>
 </body>

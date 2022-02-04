@@ -13,7 +13,7 @@ var settings_result_limit = 'BASIC_RESULT_LIMIT' in process.env ? parseInt( proc
 var settings_cors = 'CORS' in process.env ? process.env.CORS : '';
 
 app.use( bodyParser.urlencoded( { extended: false, limit: '10mb' } ) );
-app.use( bodyParser.json({limit: '10mb'}) );
+app.use( bodyParser.json( { limit: '10mb' } ) );
 app.use( express.Router() );
 app.use( express.static( __dirname + '/public' ) );
 
@@ -107,9 +107,9 @@ app.post( '/analytics', async function( req, res ){
   */
   try{ 
     //. #3
-    if( !body || typeof body != 'object '
-      || !body.goals || typeof body.goals != 'array' 
-      || !body.values || typeof body.values != 'array' ){
+    if( !body || typeof body != 'object'
+      || !body.goals || typeof body.goals != 'object' 
+      || !body.values || typeof body.values != 'object' ){
       res.status( 400 );
       res.write( JSON.stringify( { status: false, error: 'wrong format for post data.' }, null, 2 ) );
       res.end();
